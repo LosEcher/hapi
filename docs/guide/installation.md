@@ -135,6 +135,8 @@ The terminal displays a URL and QR code. Scan to access from anywhere.
 - No configuration needed
 - Works behind NAT, firewalls, and any network
 
+> **Tip:** The relay uses UDP by default. If you experience connectivity issues, set `HAPI_RELAY_FORCE_TCP=true` to force TCP mode.
+
 ### Local Only
 
 ```bash
@@ -243,23 +245,13 @@ If you prefer not to use the public relay (e.g., for lower latency or self-manag
 
 https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 
-**Quick tunnel** (temporary URL, changes on restart):
+> **Note:** Cloudflare Quick Tunnels (TryCloudflare) are not supported because they [do not support SSE](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/), which HAPI uses for real-time updates. Use a Named Tunnel instead.
+
+**Named tunnel setup:**
 
 ```bash
 # Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-cloudflared tunnel --protocol http2 --url http://localhost:3006
-```
 
-Copy the generated URL and set it:
-
-```bash
-export HAPI_PUBLIC_URL="https://your-tunnel.trycloudflare.com"
-hapi hub
-```
-
-**Named tunnel** (persistent URL):
-
-```bash
 # Create and configure a named tunnel
 cloudflared tunnel create hapi
 cloudflared tunnel route dns hapi hapi.yourdomain.com
@@ -268,7 +260,7 @@ cloudflared tunnel route dns hapi hapi.yourdomain.com
 cloudflared tunnel --protocol http2 run hapi
 ```
 
-> **Note:** Use `--protocol http2` instead of QUIC (the default) to avoid potential timeout issues with long-lived connections.
+> **Tip:** Use `--protocol http2` instead of QUIC (the default) to avoid potential timeout issues with long-lived connections.
 
 </details>
 
@@ -295,6 +287,31 @@ http://100.x.x.x:3006
 If the hub has a public IP, access directly via `http://your-hub-ip:3006`.
 
 Use HTTPS (via Nginx, Caddy, etc.) for production.
+
+**Self-signed certificates (HTTPS)**
+
+If `HAPI_API_URL` is set to an `https://...` URL with a self-signed (or otherwise untrusted) certificate, the CLI may fail with:
+
+```
+Error: self signed certificate
+```
+
+Recommended fixes (in order):
+
+1. Use a publicly trusted certificate (e.g., Let's Encrypt)
+2. Trust your private CA (recommended for private networks)
+3. Dev-only workaround: disable TLS verification (insecure)
+
+```bash
+# Preferred: trust your own CA
+export NODE_EXTRA_CA_CERTS="/path/to/your-ca.pem"
+
+# Dev-only workaround: disable TLS verification (INSECURE)
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+If you use the dev-only workaround, assume MITM risk; do not use on public networks.
+
 </details>
 
 ### Telegram setup
