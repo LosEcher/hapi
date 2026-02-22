@@ -158,6 +158,9 @@ function AppInner() {
         if (isTelegramApp() || !isPushSupported) {
             return
         }
+        if (localStorage.getItem('hapi-web-notifications') === 'false') {
+            return
+        }
         if (pushPromptedRef.current) {
             return
         }
