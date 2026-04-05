@@ -251,6 +251,7 @@ async function main() {
         const announceTunnelAccess = async () => {
             const tlsReady = await waitForTunnelTlsReady(tunnelUrl, manager)
             if (!tlsReady) {
+                await manager.stop()
                 console.log('[Tunnel] Tunnel stopped before TLS was ready.')
                 return
             }
