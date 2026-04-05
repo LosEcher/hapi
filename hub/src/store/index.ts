@@ -22,7 +22,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 3
+const SCHEMA_VERSION: number = 6
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -110,6 +110,31 @@ export class Store {
             return
         }
 
+        if (currentVersion === 3 && SCHEMA_VERSION === 4) {
+            this.migrateFromV3ToV4()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
+        if (currentVersion === 4 && SCHEMA_VERSION === 5) {
+            this.migrateFromV4ToV5()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
+        if (currentVersion === 5 && SCHEMA_VERSION === 6) {
+            this.migrateFromV5ToV6()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
+        if (currentVersion === 4 && SCHEMA_VERSION === 6) {
+            this.migrateFromV4ToV5()
+            this.migrateFromV5ToV6()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion)
         }
@@ -130,8 +155,12 @@ export class Store {
                 metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT,
                 agent_state_version INTEGER DEFAULT 1,
+                model TEXT,
+                effort TEXT,
                 todos TEXT,
                 todos_updated_at INTEGER,
+                team_state TEXT,
+                team_state_updated_at INTEGER,
                 active INTEGER DEFAULT 0,
                 active_at INTEGER,
                 seq INTEGER DEFAULT 0
@@ -278,6 +307,35 @@ export class Store {
 
     private migrateFromV2ToV3(): void {
         return
+    }
+
+    private migrateFromV3ToV4(): void {
+        const columns = this.getSessionColumnNames()
+        if (!columns.has('team_state')) {
+            this.db.exec('ALTER TABLE sessions ADD COLUMN team_state TEXT')
+        }
+        if (!columns.has('team_state_updated_at')) {
+            this.db.exec('ALTER TABLE sessions ADD COLUMN team_state_updated_at INTEGER')
+        }
+    }
+
+    private migrateFromV4ToV5(): void {
+        const columns = this.getSessionColumnNames()
+        if (!columns.has('model')) {
+            this.db.exec('ALTER TABLE sessions ADD COLUMN model TEXT')
+        }
+    }
+
+    private migrateFromV5ToV6(): void {
+        const columns = this.getSessionColumnNames()
+        if (!columns.has('effort')) {
+            this.db.exec('ALTER TABLE sessions ADD COLUMN effort TEXT')
+        }
+    }
+
+    private getSessionColumnNames(): Set<string> {
+        const rows = this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>
+        return new Set(rows.map((row) => row.name))
     }
 
     private getMachineColumnNames(): Set<string> {

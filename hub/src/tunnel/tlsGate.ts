@@ -2,6 +2,18 @@ import { isIP } from 'node:net'
 import { connect, type PeerCertificate } from 'node:tls'
 import type { TunnelManager } from './tunnelManager'
 
+type TunnelConnectionState = Pick<TunnelManager, 'isConnected'>
+
+type WaitForTunnelTlsReadyOptions = {
+    pollIntervalMs?: number
+    requestTimeoutMs?: number
+    logIntervalMs?: number
+    maxWaitMs?: number
+    checkCertificate?: (host: string, port: number, timeoutMs: number) => Promise<boolean>
+    sleep?: (ms: number) => Promise<void>
+    now?: () => number
+}
+
 type SubjectAltName = {
     type: 'DNS' | 'IP'
     value: string
@@ -156,7 +168,11 @@ async function checkTunnelCertificate(host: string, port: number, timeoutMs: num
     })
 }
 
-export async function waitForTunnelTlsReady(tunnelUrl: string, tunnelManager: TunnelManager): Promise<boolean> {
+export async function waitForTunnelTlsReady(
+    tunnelUrl: string,
+    tunnelManager: TunnelConnectionState,
+    options: WaitForTunnelTlsReadyOptions = {}
+): Promise<boolean> {
     let host: string | null = null
     let port = 443
 
@@ -180,23 +196,33 @@ export async function waitForTunnelTlsReady(tunnelUrl: string, tunnelManager: Tu
         return true
     }
 
-    const pollIntervalMs = 1500
-    const requestTimeoutMs = 2500
-    const logIntervalMs = 15000
+    const pollIntervalMs = options.pollIntervalMs ?? 1500
+    const requestTimeoutMs = options.requestTimeoutMs ?? 2500
+    const logIntervalMs = options.logIntervalMs ?? 15000
+    const maxWaitMs = options.maxWaitMs ?? 120_000
+    const checkCertificate = options.checkCertificate ?? checkTunnelCertificate
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+    const now = options.now ?? Date.now
+    const startedAt = now()
     let lastLogAt = 0
 
     while (tunnelManager.isConnected()) {
-        if (await checkTunnelCertificate(host, port, requestTimeoutMs)) {
+        if (await checkCertificate(host, port, requestTimeoutMs)) {
             return true
         }
 
-        const now = Date.now()
-        if (now - lastLogAt >= logIntervalMs) {
-            console.log('[Tunnel] Waiting for trusted TLS certificate...')
-            lastLogAt = now
+        const currentTime = now()
+        if (currentTime - startedAt >= maxWaitMs) {
+            console.warn(`[Tunnel] Timed out waiting for trusted TLS certificate after ${maxWaitMs}ms.`)
+            return false
         }
 
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+        if (currentTime - lastLogAt >= logIntervalMs) {
+            console.log('[Tunnel] Waiting for trusted TLS certificate...')
+            lastLogAt = currentTime
+        }
+
+        await sleep(pollIntervalMs)
     }
 
     return false
